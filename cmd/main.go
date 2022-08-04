@@ -12,17 +12,26 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-var invites map[string]string
+var invites map[string]InviteMap
 
 const (
 	InvitedByLink string = "invited_by_link"
 	DirectInvite  string = "direct_invite"
 )
 
-// A SociaLGraphLine object contains a single invite social graph
+// InviteMap contains the User Identifier and UserId of the person who made the
+// invite
+type InviteMap struct {
+	InviterId int64
+	Inviter   string
+}
+
+// A SocialGraphLine object contains a single invite social graph
 type SocialGraphLine struct {
 	Inviter    string    `json:"inviter"`
+	InviterId  int64     `json:"inviter_id"`
 	Invitee    string    `json:"invitee"`
+	InviteeId  int64     `json:"invitee_id"`
 	InviteType string    `json:"invite_type"`
 	Timestamp  time.Time `json:"timestamp"`
 }
@@ -75,7 +84,7 @@ func main() {
 	}
 	defer f.Close()
 
-	invites = make(map[string]string)
+	invites = make(map[string]InviteMap)
 	bot, err := tgbotapi.NewBotAPI(telegramBotAPIKey)
 	if err != nil {
 		log.Fatal(err)
@@ -97,7 +106,7 @@ func main() {
 			chatJoinRequest := update.ChatJoinRequest
 
 			link := chatJoinRequest.InviteLink
-			username := chatJoinRequest.From.UserName
+			username := GetUserIdentifier(chatJoinRequest.From)
 			userid := chatJoinRequest.From.ID
 			chatId := chatJoinRequest.Chat.ID
 			log.Printf("user %s was invited to join chat via invite link: %#v", username, link)
@@ -111,12 +120,16 @@ func main() {
 				// send msg to channel
 				invitedby, ok := invites[link.InviteLink]
 				if !ok {
-					invitedby = "unknown"
+					invitedby = InviteMap{
+						Inviter:   "unknown",
+						InviterId: 0,
+					}
 				}
 
 				g := &SocialGraphLine{
-					Inviter:    invitedby,
+					Inviter:    invitedby.Inviter,
 					Invitee:    username,
+					InviteeId:  chatJoinRequest.From.ID,
 					InviteType: InvitedByLink,
 					Timestamp:  time.Now(),
 				}
@@ -150,11 +163,13 @@ func main() {
 						continue
 					}
 
-					username := v.UserName
+					username := GetUserIdentifier(v)
 
 					g := &SocialGraphLine{
 						Inviter:    messageFromUserName,
+						InviterId:  messageFromID,
 						Invitee:    username,
+						InviteeId:  v.ID,
 						InviteType: DirectInvite,
 						Timestamp:  time.Now(),
 					}
@@ -193,10 +208,15 @@ func main() {
 						log.Fatal(err)
 					}
 
-					username := update.Message.From.UserName
+					username := GetUserIdentifier(*update.Message.From)
 					log.Printf("user %s created an invite link: %#v", username, inviteLink.InviteLink)
 
-					invites[inviteLink.InviteLink] = username
+					inviteMap := InviteMap{
+						Inviter:   username,
+						InviterId: update.Message.From.ID,
+					}
+
+					invites[inviteLink.InviteLink] = inviteMap
 
 					// send msg invite out
 					msg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("Generated invite link for hackerdrinks: %s\nThis link is valid for 5 minutes", inviteLink.InviteLink))
@@ -207,4 +227,14 @@ func main() {
 			}
 		}
 	}
+}
+
+// GetUserIdentifier takes in a Telegram User and returns the username if it
+// exists, else return the user's first name
+func GetUserIdentifier(u tgbotapi.User) string {
+	if u.UserName == "" {
+		return u.FirstName
+	}
+	return u.UserName
+
 }
