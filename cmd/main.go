@@ -139,7 +139,7 @@ func main() {
 					log.Printf("error writing invite: %#v", err)
 				}
 
-				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Say hello to %s who just joined us by invite from: %s", username, invitedby))
+				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Say hello to %s who just joined us by invite from: %s", username, invitedby.Inviter))
 
 				bot.Send(msg)
 
